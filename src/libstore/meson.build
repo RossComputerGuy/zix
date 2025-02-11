@@ -1,4 +1,4 @@
-project('nix-store', 'cpp',
+project('nix-store', 'cpp', 'c',
   version : files('.zix-version'),
   default_options : [
     'cpp_std=c++2a',
@@ -131,6 +131,8 @@ if aws_s3.found()
   ).as_system('system')
 endif
 deps_other += aws_s3
+
+subdir('nix-meson-build-support/zig')
 
 subdir('nix-meson-build-support/generate-header')
 
@@ -423,6 +425,18 @@ endforeach
 
 subdir('nix-meson-build-support/export-all-symbols')
 subdir('nix-meson-build-support/windows-version')
+
+sources += custom_target(
+  'zig build-lib',
+  command: [zig, 'build-lib', '-femit-h=@OUTDIR@/libstore-zig.h', '-femit-bin=@OUTPUT@', '-ofmt=c', '-lc', zig_args, '@INPUT@'],
+  output: 'libstore-zig.c',
+  input: 'libstore.zig',
+  depend_files: [
+    'globals.zig',
+  ],
+)
+
+include_dirs += fs.parent(fs.parent(zig.full_path())) / 'lib' / 'zig'
 
 this_library = library(
   'nixstore',

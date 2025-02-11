@@ -174,6 +174,8 @@ static bool hasVirt() {
 }
 #endif
 
+extern "C" const char** nix_libstore_get_default_system_features();
+
 StringSet Settings::getDefaultSystemFeatures()
 {
     /* For backwards compatibility, accept some "features" that are
@@ -194,6 +196,14 @@ StringSet Settings::getDefaultSystemFeatures()
     if (hasVirt())
         features.insert("apple-virt");
     #endif
+
+    const char** value = nix_libstore_get_default_system_features();
+    if (value != nullptr) {
+        for (size_t i = 0; value[i] != nullptr; i++) {
+            features.insert(value[i]);
+        }
+    }
+    free(value);
 
     return features;
 }
