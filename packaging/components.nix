@@ -152,6 +152,14 @@ let
       ninja
       zig_0_14
     ] ++ prevAttrs.nativeBuildInputs or [ ];
+    mesonFlags = prevAttrs.mesonFlags or [ ] ++ [
+      "-Dabi=${
+        if stdenv.hostPlatform.parsed.abi.name != "unknown" then
+          stdenv.hostPlatform.parsed.abi.name
+        else
+          "none"
+      }"
+    ];
     mesonCheckFlags = prevAttrs.mesonCheckFlags or [ ] ++ [
       "--print-errorlogs"
     ];

@@ -7,6 +7,8 @@ else
   zig_target += target_machine.system()
 endif
 
+zig_target += '-' + get_option('abi')
+
 zig_args = [
   '--cache-dir', meson.current_build_dir() / 'zig-cache',
   '--global-cache-dir', meson.project_build_root() / 'zig-cache',

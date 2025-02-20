@@ -19,3 +19,9 @@ option('store-dir', type : 'string', value : '/nix/store',
 option('log-dir', type : 'string', value : '/nix/var/log/nix',
   description : 'path to store logs in for Nix',
 )
+
+option('abi', type : 'combo',
+  choices: ['none', 'gnu', 'musl'],
+  value: 'gnu',
+  description: 'The ABI to pass to zig',
+)
