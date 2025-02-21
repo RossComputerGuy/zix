@@ -1,0 +1,13 @@
+.{
+    .name = "nix-main",
+    .version = "0.1.0",
+    .paths = .{"."},
+    .dependencies = .{
+        .@"nix-util" = .{
+            .path = "../libutil",
+        },
+        .@"nix-store" = .{
+            .path = "../libstore",
+        },
+    },
+}
