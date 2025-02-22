@@ -1,7 +1,6 @@
-project('nix-util-c', 'cpp',
+project('nix-util-c',
   version : files('.zix-version'),
   default_options : [
-    'cpp_std=c++2a',
     # TODO(Qyriad): increase the warning level
     'warning_level=1',
     'errorlogs=true', # Please print logs for tests that fail
@@ -12,70 +11,40 @@ project('nix-util-c', 'cpp',
 
 fs = import('fs')
 
-cxx = meson.get_compiler('cpp')
+subdir('nix-meson-build-support/zig')
 
-subdir('nix-meson-build-support/deps-lists')
+zig_prefix = meson.current_build_dir() / 'zig-out'
 
-configdata = configuration_data()
+deps = []
 
-deps_private_maybe_subproject = [
-  dependency('nix-util'),
-]
-deps_public_maybe_subproject = [
-]
-subdir('nix-meson-build-support/subprojects')
+libutil = dependency('nix-util', required: false)
+if libutil.found()
+  deps += libutil
+  zig_build_args += [
+    '-fsys=nix-util',
+    '--search-prefix', libutil.get_variable('prefix'),
+    '--search-prefix', fs.parent(libutil.get_variable('includedir')),
+    '--search-prefix', fs.parent(libutil.get_variable('libdir')),
+  ]
+endif
 
-# TODO rename, because it will conflict with downstream projects
-configdata.set_quoted('PACKAGE_VERSION_ZIX', meson.project_version())
-configdata.set_quoted('PACKAGE_VERSION_NIX', fs.read('.version').strip().split('\n')[0])
-
-config_h = configure_file(
-  configuration : configdata,
-  output : 'config-util.h',
+zig_target = custom_target('zig build',
+  output: ['zig-out'],
+  command: [zig, 'build', zig_build_args, '--prefix', zig_prefix, '--build-file', meson.project_source_root() / 'build.zig'],
+  env: {
+    'USE_MESON_LIBS': '1',
+  },
 )
 
-add_project_arguments(
-  # TODO(Qyriad): Yes this is how the autoconf+Make system did it.
-  # It would be nice for our headers to be idempotent instead.
+includedir = zig_prefix / 'include' / 'nix'
+compile_args = ['-I' + includedir]
 
-  # From C++ libraries, only for internals
-  '-include', 'config-util.hh',
+install_subdir(zig_prefix / 'lib', install_dir: get_option('libdir'), strip_directory: true)
+install_subdir(zig_prefix / 'include', install_dir: get_option('includedir'), strip_directory: true)
 
-  # From C libraries, for our public, installed headers too
-  '-include', 'config-util.h',
-  language : 'cpp',
-)
-
-subdir('nix-meson-build-support/common')
-
-sources = files(
-  'nix_api_util.cc',
-)
-
-include_dirs = [include_directories('.')]
-
-headers = [config_h] + files(
-  'nix_api_util.h',
-)
-
-# TODO don't install this once tests don't use it.
-headers += files('nix_api_util_internal.h')
-
-subdir('nix-meson-build-support/export-all-symbols')
-subdir('nix-meson-build-support/windows-version')
-
-this_library = library(
-  'nixutilc',
-  sources,
-  dependencies : deps_public + deps_private + deps_other,
-  include_directories : include_dirs,
-  link_args: linker_export_flags,
-  prelink : true, # For C++ static initializers
-  install : true,
-)
-
-install_headers(headers, subdir : 'nix', preserve_path : true)
-
-libraries_private = []
-
-subdir('nix-meson-build-support/export')
+meson.override_dependency('nix-util-c', declare_dependency(
+  compile_args: compile_args,
+  link_args: ['-L' + zig_prefix / 'lib', '-lnixutilc'],
+  dependencies: deps,
+  sources: [zig_target],
+))

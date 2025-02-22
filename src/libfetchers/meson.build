@@ -1,7 +1,6 @@
-project('nix-fetchers', 'cpp',
+project('nix-fetchers',
   version : files('.zix-version'),
   default_options : [
-    'cpp_std=c++2a',
     # TODO(Qyriad): increase the warning level
     'warning_level=1',
     'errorlogs=true', # Please print logs for tests that fail
@@ -10,82 +9,58 @@ project('nix-fetchers', 'cpp',
   license : 'LGPL-2.1-or-later',
 )
 
-cxx = meson.get_compiler('cpp')
+fs = import('fs')
 
-subdir('nix-meson-build-support/deps-lists')
+subdir('nix-meson-build-support/zig')
 
-configuration_data()
+zig_prefix = meson.current_build_dir() / 'zig-out'
 
-deps_private_maybe_subproject = [
-]
-deps_public_maybe_subproject = [
-  dependency('nix-util'),
-  dependency('nix-store'),
-]
-subdir('nix-meson-build-support/subprojects')
+deps = []
 
-nlohmann_json = dependency('nlohmann_json', version : '>= 3.9')
-deps_public += nlohmann_json
+libutil = dependency('nix-util', required: false)
+if libutil.found()
+  deps += libutil
+  zig_build_args += [
+    '-fsys=nix-util',
+    '--search-prefix', libutil.get_variable('prefix'),
+    '--search-prefix', fs.parent(libutil.get_variable('includedir')),
+    '--search-prefix', fs.parent(libutil.get_variable('libdir')),
+  ]
+endif
 
-libgit2 = dependency('libgit2')
-deps_private += libgit2
+libstore = dependency('nix-store', required: false)
+if libstore.found()
+  deps += libstore
+  zig_build_args += [
+    '-fsys=nix-store',
+    '--search-prefix', libstore.get_variable('prefix'),
+    '--search-prefix', fs.parent(libstore.get_variable('includedir')),
+    '--search-prefix', fs.parent(libstore.get_variable('libdir')),
+  ]
+endif
 
-add_project_arguments(
-  # TODO(Qyriad): Yes this is how the autoconf+Make system did it.
-  # It would be nice for our headers to be idempotent instead.
-  '-include', 'config-util.hh',
-  '-include', 'config-store.hh',
-  # '-include', 'config-fetchers.h',
-  language : 'cpp',
+zig_target = custom_target('zig build',
+  output: ['zig-out'],
+  command: [zig, 'build', zig_build_args, '--prefix', zig_prefix, '--build-file', meson.project_source_root() / 'build.zig'],
+  env: {
+    'USE_MESON_LIBS': '1',
+  },
 )
 
-subdir('nix-meson-build-support/common')
+includedir = zig_prefix / 'include' / 'nix'
+compile_args = ['-I' + includedir]
 
-sources = files(
-  'attrs.cc',
-  'cache.cc',
-  'fetch-settings.cc',
-  'fetch-to-store.cc',
-  'fetchers.cc',
-  'filtering-source-accessor.cc',
-  'git-lfs-fetch.cc',
-  'git-utils.cc',
-  'git.cc',
-  'github.cc',
-  'indirect.cc',
-  'mercurial.cc',
-  'path.cc',
-  'registry.cc',
-  'store-path-accessor.cc',
-  'tarball.cc',
-)
+install_subdir(zig_prefix / 'lib', install_dir: get_option('libdir'), strip_directory: true)
+install_subdir(zig_prefix / 'include', install_dir: get_option('includedir'), strip_directory: true)
 
-include_dirs = [include_directories('.')]
-
-headers = files(
-  'attrs.hh',
-  'cache.hh',
-  'fetch-settings.hh',
-  'fetch-to-store.hh',
-  'fetchers.hh',
-  'filtering-source-accessor.hh',
-  'git-lfs-fetch.hh',
-  'git-utils.hh',
-  'registry.hh',
-  'store-path-accessor.hh',
-  'tarball.hh',
-)
-
-this_library = library(
-  'nixfetchers',
-  sources,
-  dependencies : deps_public + deps_private + deps_other,
-  prelink : true, # For C++ static initializers
-  install : true,
-)
-
-install_headers(headers, subdir : 'nix', preserve_path : true)
-
-libraries_private = []
-
-subdir('nix-meson-build-support/export')
+meson.override_dependency('nix-fetchers', declare_dependency(
+  compile_args: compile_args,
+  link_args: ['-L' + zig_prefix / 'lib', '-lnixfetchers'],
+  sources: [zig_target],
+  dependencies: deps,
+  variables: {
+    'prefix': zig_prefix,
+    'includedir': zig_prefix / 'include',
+    'libdir': zig_prefix / 'lib'
+  }
+))
